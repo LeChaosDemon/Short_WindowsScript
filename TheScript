@@ -1,0 +1,119 @@
+# Logging Setup
+$LogFile = "$PSScriptRoot\hardening_log.txt"
+"Script Started at $(Get-Date)" | Out-File -FilePath $LogFile -Append
+
+# Check for Administrative Privileges
+if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+    Write-Host "This script requires administrative privileges. Please run as Administrator." -ForegroundColor Red
+    exit
+}
+"Administrative privileges confirmed." | Out-File -FilePath $LogFile -Append
+
+# Menu Functionality
+Function Show-Menu {
+    Clear-Host
+    Write-Host "Cybersecurity Hardening Script" -ForegroundColor Cyan
+    Write-Host "--------------------------------------" -ForegroundColor Cyan
+    Write-Host "1. Enable Firewall"
+    Write-Host "2. Configure Password Policies"
+    Write-Host "3. Manage Services"
+    Write-Host "4. Disable Remote Desktop"
+    Write-Host "5. Registry Hardening"
+    Write-Host "6. Update All User Passwords"
+    Write-Host "7. Flush DNS and Clear Hosts File"
+    Write-Host "8. Apply All Settings"
+    Write-Host "0. Exit"
+    Write-Host "--------------------------------------" -ForegroundColor Cyan
+    $Choice = Read-Host "Enter your choice"
+    Return $Choice
+}
+
+# Functions for Individual Options
+Function Enable-Firewall {
+    Write-Host "Enabling Firewall..." -ForegroundColor Green
+    Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
+    Set-NetFirewallProfile -Profile Domain,Public,Private -DefaultInboundAction Block -DefaultOutboundAction Allow
+    "Firewall enabled successfully." | Out-File -FilePath $LogFile -Append
+}
+
+Function Configure-PasswordPolicies {
+    Write-Host "Configuring Password Policies..." -ForegroundColor Green
+    secedit /export /cfg C:\secpol.cfg
+    (Get-Content C:\secpol.cfg).replace("PasswordHistorySize = 0", "PasswordHistorySize = 8") | Set-Content C:\secpol.cfg
+    (Get-Content C:\secpol.cfg).replace("MaximumPasswordAge = 0", "MaximumPasswordAge = 90") | Set-Content C:\secpol.cfg
+    (Get-Content C:\secpol.cfg).replace("MinimumPasswordAge = 0", "MinimumPasswordAge = 10") | Set-Content C:\secpol.cfg
+    (Get-Content C:\secpol.cfg).replace("MinimumPasswordLength = 0", "MinimumPasswordLength = 8") | Set-Content C:\secpol.cfg
+    secedit /configure /db secedit.sdb /cfg C:\secpol.cfg
+    Remove-Item C:\secpol.cfg
+    "Password policies configured successfully." | Out-File -FilePath $LogFile -Append
+}
+
+Function Manage-Services {
+    Write-Host "Managing Services..." -ForegroundColor Green
+    $ServicesToDisable = @("RemoteAccess", "Telephony", "Tlntsvr", "p2pimsvc", "simptcp", "fax", "msftpsvc")
+    foreach ($Service in $ServicesToDisable) {
+        Stop-Service -Name $Service -Force -ErrorAction SilentlyContinue
+        Set-Service -Name $Service -StartupType Disabled
+        "Service $Service disabled successfully." | Out-File -FilePath $LogFile -Append
+    }
+}
+
+Function Disable-RDP {
+    Write-Host "Disabling Remote Desktop..." -ForegroundColor Green
+    Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 1
+    "Remote Desktop disabled successfully." | Out-File -FilePath $LogFile -Append
+}
+
+Function Harden-Registry {
+    Write-Host "Hardening Registry Settings..." -ForegroundColor Green
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value 1
+    Set-ItemProperty -Path "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "ClearPageFileAtShutdown" -Value 1
+    "Registry settings hardened successfully." | Out-File -FilePath $LogFile -Append
+}
+
+Function Update-Passwords {
+    Write-Host "Updating all user passwords..." -ForegroundColor Green
+    $Users = Get-LocalUser | Where-Object { $_.Enabled -eq $true }
+    foreach ($User in $Users) {
+        Set-LocalUser -Name $User.Name -Password (ConvertTo-SecureString -String "Cyb3rC0nt3stL0Lol" -AsPlainText -Force)
+        "Password for user $($User.Name) updated successfully." | Out-File -FilePath $LogFile -Append
+    }
+}
+
+Function Flush-DNS {
+    Write-Host "Flushing DNS Cache and Clearing Hosts File..." -ForegroundColor Green
+    ipconfig /flushdns
+    Clear-Content -Path "$env:SystemRoot\System32\drivers\etc\hosts"
+    "DNS Cache and Hosts File cleared successfully." | Out-File -FilePath $LogFile -Append
+}
+
+# Apply All Settings
+Function Apply-AllSettings {
+    Enable-Firewall
+    Configure-PasswordPolicies
+    Manage-Services
+    Disable-RDP
+    Harden-Registry
+    Update-Passwords
+    Flush-DNS
+    Write-Host "All configurations applied successfully." -ForegroundColor Green
+}
+
+# Main Loop
+Do {
+    $Choice = Show-Menu
+    Switch ($Choice) {
+        "1" { Enable-Firewall }
+        "2" { Configure-PasswordPolicies }
+        "3" { Manage-Services }
+        "4" { Disable-RDP }
+        "5" { Harden-Registry }
+        "6" { Update-Passwords }
+        "7" { Flush-DNS }
+        "8" { Apply-AllSettings }
+        "0" { Write-Host "Exiting..." -ForegroundColor Cyan; break }
+        Default { Write-Host "Invalid choice. Please try again." -ForegroundColor Red }
+    }
+} While ($Choice -ne "0")
+
+"Script Ended at $(Get-Date)" | Out-File -FilePath $LogFile -Append
